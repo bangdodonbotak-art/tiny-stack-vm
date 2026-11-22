@@ -1,13 +1,10 @@
-// Tiny stack VM, ISA v1 — a from-scratch interpreter written for
-// tiny-stack-vm-01. Reads every /input/<id>/program.bin + input.bin and
-// writes /output/<id>/stdout.bin + exit.txt, per ISA.md in the kit.
+// Tiny stack VM, ISA v1 — from-scratch interpreter for tiny-stack-vm-01.
+// Reads /input/<id>/{program,input}.bin, writes /output/<id>/{stdout.bin,exit.txt}.
 // Deterministic: no clock, no environment reads, no randomness.
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Opcode metadata: [immediate bytes, pops, pushes] per opcode byte.
-// 0x1f is not an opcode; neither are 0x08-0x0f, 0x23-0x2f, 0x35-0x3f,
-// 0x42-0x4f or anything >= 0x54.
+// Opcode metadata: [immediate bytes, pops, pushes]; gaps are not opcodes.
 const META: Array<[number, number, number, number]> = [
   [0x00, 0, 0, 0], [0x01, 1, 0, 1], [0x02, 4, 0, 1], [0x03, 0, 1, 0],
   [0x04, 0, 1, 2], [0x05, 0, 2, 2], [0x06, 0, 2, 3], [0x07, 0, 3, 3],
@@ -53,8 +50,7 @@ function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } 
     code,
   });
   for (;;) {
-    // ISA step order: step limit, pc range, opcode known, immediate fits,
-    // then the step counts and the stack bounds are checked.
+    // ISA step order: step limit, pc range, opcode, immediate, stack bounds.
     if (steps === STEP_LIMIT) return end(10);
     if (pc < 0 || pc >= p.length) return end(9);
     const op = p[pc];
@@ -173,7 +169,14 @@ function run(p: Uint8Array, inp: Uint8Array): { out: Uint8Array; code: number } 
         break;
       }
       case 0x50: {
-        const s = String(st[sp - 1]);
+        const v = st[sp - 1];
+        if (v >= 0 && v < 10) { // single digit: no String allocation
+          if (ol + 1 > OUT_MAX) return end(11);
+          sp--;
+          out[ol++] = 48 + v;
+          break;
+        }
+        const s = String(v);
         if (ol + s.length > OUT_MAX) return end(11);
         sp--;
         for (let i = 0; i < s.length; i++) out[ol++] = s.charCodeAt(i);
